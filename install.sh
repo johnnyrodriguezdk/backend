@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# INSTALADOR DEFINITIVO - BACKEND MANAGER by JOHNNY (@Jrcelulares)
+# INSTALADOR - BACKEND MANAGER by JOHNNY (@Jrcelulares)
 # Versión: 5.0 - 20 opciones + panel visual + todas las funciones
 # ============================================================
 
@@ -18,7 +18,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
-echo -e "\E[41;1;37m   INSTALADOR DEFINITIVO - BACKEND MANAGER by JOHNNY   \E[0m"
+echo -e "\E[41;1;37m   INSTALADOR - BACKEND MANAGER by JOHNNY   \E[0m"
 echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
 
 # Backup del script actual si existe
