@@ -2,7 +2,7 @@
 
 # ==================================================
 # SCRIPT: superc4mpeon - GESTOR BACKEND CLOUDFRONT
-# VERSIÓN: 3.0 - CON EXPIRACIÓN EN MINUTOS
+# VERSIÓN: 4.0 - CON MONITOR DE RECURSOS EN TIEMPO REAL
 # ==================================================
 
 # ███████╗██╗   ██╗██████╗ ███████╗██████╗  ██████╗██╗  ██╗
@@ -72,8 +72,166 @@ if [ ! -x "$SCRIPT_PATH" ]; then
     sudo chmod +x "$SCRIPT_PATH"
 fi
 
+# ============ FORMATO DE BYTES ============
+format_bytes() {
+    local bytes=$1
+    if [ $bytes -ge 1099511627776 ]; then  # TB
+        echo "$(awk "BEGIN {printf \"%.2f TB\"}" $((bytes / 1099511627776)))"
+    elif [ $bytes -ge 1073741824 ]; then  # GB
+        echo "$(awk "BEGIN {printf \"%.2f GB\"}" $((bytes / 1073741824)))"
+    elif [ $bytes -ge 1048576 ]; then     # MB
+        echo "$(awk "BEGIN {printf \"%.2f MB\"}" $((bytes / 1048576)))"
+    elif [ $bytes -ge 1024 ]; then         # KB
+        echo "$(awk "BEGIN {printf \"%.2f KB\"}" $((bytes / 1024)))"
+    else
+        echo "${bytes} B"
+    fi
+}
 
-ins
+# ============ MONITOR DE RECURSOS BÁSICO ============
+show_resource_monitor() {
+    show_banner
+    msg -tit "📊 MONITOR DE RECURSOS DEL SISTEMA"
+
+    # Uptime
+    local uptime_info=$(uptime | sed 's/.*up \([^,]*\),.*/\1/')
+    msg -info "⏱️  Tiempo activo: $uptime_info"
+
+    # CPU
+    msg -bar2
+    msg -azu "💻 USO DE CPU:"
+    local cpu1 user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1
+    read cpu1 user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1 < /proc/stat
+    local total1=$((user1 + nice1 + system1 + idle1 + iowait1 + irq1 + softirq1 + steal1))
+    local idle1=$idle1
+    sleep 1
+    read cpu2 user2 nice2 system2 idle2 iowait2 irq2 softirq2 steal2 < /proc/stat
+    local total2=$((user2 + nice2 + system2 + idle2 + iowait2 + irq2 + softirq2 + steal2))
+    local idle2=$idle2
+    local cpu_usage=$(awk -v id1="$idle1" -v tot1="$total1" -v id2="$idle2" -v tot2="$total2" 'BEGIN {
+        if (tot2 - tot1 > 0) printf "%.1f", 100 * (1 - (id2 - id1) / (tot2 - tot1)
+        else print "0.0"
+    }')
+    echo -e "${VERDE}  Uso actual: ${cpu_usage}%${SEMCOR}"
+
+    # RAM
+    msg -bar2
+    msg -azu "🧠 MEMORIA RAM:"
+    free -h | awk '/^Mem:/ {
+        total = $2
+        used = $3
+        free = $4
+        gsub(/[^0-9.]/, "", used)
+        gsub(/[^0-9.]/, "", total)
+        printf "  Total: %s  Usada: %s  Libre: %s  (%.1f%% usada)\n", $2, $3, $4, (used/total)*100
+    }'
+
+    # Red
+    msg -bar2
+    msg -azu "🌐 TRÁFICO DE RED (desde arranque):"
+    if [ -r /proc/net/dev ]; then
+        tail -n +3 /proc/net/dev | while read line; do
+            if [[ $line != lo:* ]]; then
+                iface=$(echo $line | cut -d: -f1 | tr -d ' ')
+                rx=$(echo $line | awk '{print $2}')
+                tx=$(echo $line | awk '{print $10}')
+                rx_f=$(format_bytes $rx)
+                tx_f=$(format_bytes $tx)
+                echo -e "${VERDE}  $iface:${SEMCOR} RX $rx_f  TX $tx_f"
+            fi
+        done
+    else
+        msg -verm "  No se puede acceder a /proc/net/dev"
+    fi
+
+    msg -bar
+    read -p "Presiona ENTER para continuar..."
+}
+
+# ============ MONITOR EN TIEMPO REAL ============
+show_realtime_monitor() {
+    clear
+    msg -tit "📈 MONITOR EN TIEMPO REAL (CTRL+C PARA SALIR)"
+    echo -e "${AMARILLO}Actualizando cada 2 segundos...${SEMCOR}"
+    msg -bar
+    sleep 2
+
+    # Valores iniciales de red
+    local old_rx=0 old_tx=0
+    local old_total=0
+    if [ -r /proc/net/dev ]; then
+        local first_line=$(tail -n +3 /proc/net/dev | grep -v lo: | head -1)
+        old_rx=$(echo $first_line | awk '{print $2}')
+        old_tx=$(echo $first_line | awk '{print $10}')
+        old_total=$((old_rx + old_tx))
+    fi
+
+    while true; do
+        clear
+        echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
+        echo -e "${BLANCO}${NEGRITO}         MONITOR EN TIEMPO REAL (CTRL+C SALIR)${SEMCOR}"
+        echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
+
+        # Hora actual
+        echo -e "${CIAN}⏱️  $(date '+%H:%M:%S')${SEMCOR}"
+
+        # CPU
+        local cpu1 user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1
+        read cpu1 user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1 < /proc/stat
+        local total1=$((user1 + nice1 + system1 + idle1 + iowait1 + irq1 + softirq1 + steal1))
+        local idle1=$idle1
+        sleep 1
+        read cpu2 user2 nice2 system2 idle2 iowait2 irq2 softirq2 steal2 < /proc/stat
+        local total2=$((user2 + nice2 + system2 + idle2 + iowait2 + irq2 + softirq2 + steal2))
+        local idle2=$idle2
+        local cpu_usage=$(awk -v id1="$idle1" -v tot1="$total1" -v id2="$idle2" -v tot2="$total2" 'BEGIN {
+            if (tot2 - tot1 > 0) printf "%.1f", 100 * (1 - (id2 - id1) / (tot2 - tot1)
+            else print "0.0"
+        }')
+        echo -e "${VERDE}💻 CPU: ${cpu_usage}%${SEMCOR}"
+
+        # RAM
+        local ram_line=$(free -b | grep Mem:)
+        local ram_total=$(echo $ram_line | awk '{print $2}')
+        local ram_used=$(echo $ram_line | awk '{print $3}')
+        local ram_percent=$(awk "BEGIN {printf \"%.1f\"}" $((ram_used * 100 / ram_total)))
+        local ram_used_f=$(format_bytes $ram_used)
+        local ram_total_f=$(format_bytes $ram_total)
+        echo -e "${AZUL}🧠 RAM: ${ram_used_f} / ${ram_total_f} (${ram_percent}%)${SEMCOR}"
+
+        # RED en tiempo real
+        if [ -r /proc/net/dev ]; then
+            local new_line=$(tail -n +3 /proc/net/dev | grep -v lo: | head -1)
+            local new_rx=$(echo $new_line | awk '{print $2}')
+            local new_tx=$(echo $new_line | awk '{print $10}')
+            local new_total=$((new_rx + new_tx))
+            
+            local rx_speed=$((new_rx - old_rx))
+            local tx_speed=$((new_tx - old_tx))
+            local total_speed=$((new_total - old_total))
+            
+            local rx_speed_f=$(format_bytes $rx_speed)
+            local tx_speed_f=$(format_bytes $tx_speed)
+            local total_speed_f=$(format_bytes $total_speed)
+            
+            echo -e "${CIAN}🌐 RED (últimos 2s):${SEMCOR}"
+            echo -e "  📥 RX: ${VERDE}${rx_speed_f}/s${SEMCOR}"
+            echo -e "  📤 TX: ${VERDE}${tx_speed_f}/s${SEMCOR}"
+            echo -e "  📊 Total: ${AMARILLO}${total_speed_f}/s${SEMCOR}"
+            
+            old_rx=$new_rx
+            old_tx=$new_tx
+        fi
+
+        # Conexiones activas
+        local connections=$(ss -tn state established '( dport = :80 or sport = :80 )' 2>/dev/null | tail -n +2 | wc -l)
+        echo -e "${MORADO}🔌 Conexiones activas (puerto 80): ${connections}${SEMCOR}"
+
+        msg -bar
+        echo -e "${AMARILLO}Presiona CTRL+C para volver al menú${SEMCOR}"
+        sleep 2
+    done
+}
 
 # ============ VERIFICAR Y ELIMINAR BACKENDS EXPIRADOS (CON AWK) ============
 check_and_clean_expired() {
@@ -192,12 +350,12 @@ check_and_clean_expired() {
     # ===== RECARGAR NGINX SI HUBO CAMBIOS =====
     if [ $modified -eq 1 ]; then
         msg -info "🔄 Recargando Nginx..."
-        if nginx -t 2>/dev/null; then
+        if /usr/sbin/nginx -t 2>/dev/null; then
             systemctl reload nginx
             msg -verd "✅ Configuración actualizada: backends expirados eliminados"
         else
             msg -verm "❌ Error en configuración después de limpiar expirados"
-            nginx -t
+            /usr/sbin/nginx -t
         fi
     else
         msg -verd "✅ No hay backends expirados"
@@ -265,7 +423,7 @@ add_backend_minutes() {
     msg -info "IP: ${bip}:${bport} - Expira: ${exp_date} (${minutes} minutos)"
     
     # Recargar nginx
-    if nginx -t; then
+    if /usr/sbin/nginx -t; then
         systemctl reload nginx
         msg -verd "Configuración recargada!"
     fi
@@ -328,7 +486,7 @@ add_backend_days() {
     msg -verd "✅ BACKEND ${bname} agregado correctamente!"
     msg -info "IP: ${bip}:${bport} - Expira: ${exp_date} (${days} días)"
     
-    if nginx -t; then
+    if /usr/sbin/nginx -t; then
         systemctl reload nginx
         msg -verd "Configuración recargada!"
     fi
@@ -448,7 +606,7 @@ restore_backends() {
             if tar -xzf "$BACKUP_DIR/$selected_backup" -C / 2>/dev/null; then
                 msg -verd "✅ RESTAURACIÓN COMPLETADA!"
                 
-                if nginx -t; then
+                if /usr/sbin/nginx -t; then
                     systemctl reload nginx
                     msg -verd "Configuración de Nginx recargada"
                 else
@@ -670,6 +828,10 @@ server {
         set $target_backend "http://127.0.0.1:8080";
     }
     
+    if ($http_backend = "ssh") {
+        set $target_backend "http://127.0.0.1:22";
+    }
+    
     # SOPORTE PARA USUARIOS PERSONALIZADOS
     if ($http_user) {
         set $target_backend "http://$http_user";
@@ -706,13 +868,13 @@ EOF
     ln -sf "$BACKEND_CONF" "$BACKEND_ENABLED"
     rm -f /etc/nginx/sites-enabled/default
     
-    if nginx -t; then
+    if /usr/sbin/nginx -t; then
         systemctl restart nginx
         msg -verd "NGINX instalado y configurado con ÉXITO!"
         msg -info "Configuración DINÁMICA activada"
     else
         msg -verm "Error en configuración. Restaurando..."
-        nginx -t
+        /usr/sbin/nginx -t
     fi
     
     msg -bar
@@ -740,7 +902,6 @@ manage_backends() {
     
     echo -e "${CIAN}USUARIOS BACKENDS ACTUALES EN CONFIGURACIÓN:${SEMCOR}"
     echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
-    #echo ""
     
     if [ -f "$USER_DATA" ] && [ -s "$USER_DATA" ]; then
         while IFS=: read -r user ip port exp_time; do
@@ -843,7 +1004,7 @@ manage_backends() {
                 fi
                 
                 # Recargar nginx
-                if nginx -t; then
+                if /usr/sbin/nginx -t; then
                     systemctl reload nginx
                     msg -verd "✅ Backend ${bname} eliminado!"
                 else
@@ -951,7 +1112,7 @@ manage_backends() {
     esac
     
     if [ "$backend_opt" != "5" ] && [ "$backend_opt" != "7" ] && [ "$backend_opt" != "8" ]; then
-        if nginx -t; then
+        if /usr/sbin/nginx -t; then
             systemctl reload nginx
             msg -verd "Configuración recargada!"
         else
@@ -1112,8 +1273,10 @@ main_menu() {
         echo -e "${VERDE}  [7]${SEMCOR} ${BLANCO}REINICIAR SERVICIOS${SEMCOR}"
         echo -e "${VERDE}  [8]${SEMCOR} ${BLANCO}GESTIÓN DE BACKUPS${SEMCOR}"
         echo -e "${VERDE}  [9]${SEMCOR} ${BLANCO}LIMPIAR BACKENDS EXPIRADOS${SEMCOR}"
-        echo -e "${VERDE} [10]${SEMCOR} ${ROJO}DESINSTALAR TODO${SEMCOR}"
-        echo -e "${VERDE} [11]${SEMCOR} ${BLANCO}SALIR${SEMCOR}"
+        echo -e "${VERDE} [10]${SEMCOR} ${BLANCO}📊 MONITOR DE RECURSOS${SEMCOR}"
+        echo -e "${VERDE} [11]${SEMCOR} ${BLANCO}📈 MONITOR EN TIEMPO REAL (CTRL+C)${SEMCOR}"
+        echo -e "${VERDE} [12]${SEMCOR} ${ROJO}DESINSTALAR TODO${SEMCOR}"
+        echo -e "${VERDE} [13]${SEMCOR} ${BLANCO}SALIR${SEMCOR}"
         echo -e "${MORADO}════════════════════════════════════════════════════════${SEMCOR}"
         
         read -p "🔥 SELECCIONA OPCIÓN: " option
@@ -1124,12 +1287,14 @@ main_menu() {
             3) manage_backends ;;
             4) show_status ;;
             5) show_epic_instructions ;;
-            6) nano "$BACKEND_CONF"; nginx -t && systemctl reload nginx ;;
-            7) systemctl restart nginx superc4mpeon-proxy; msg -verd "Servicios reiniciados!"; sleep 2 ;;
+            6) nano "$BACKEND_CONF"; /usr/sbin/nginx -t && systemctl reload nginx ;;
+            7) systemctl restart nginx superc4mpeon-proxy 2>/dev/null; msg -verd "Servicios reiniciados!"; sleep 2 ;;
             8) backup_menu ;;
             9) check_and_clean_expired; msg -bar; read -p "Presiona ENTER para continuar..." ;;
-            10) uninstall_everything ;;
-            11) 
+            10) show_resource_monitor ;;
+            11) show_realtime_monitor ;;
+            12) uninstall_everything ;;
+            13) 
                 msg -verd "¡Hasta la vista, c4mpeon! 👋"
                 exit 0 
                 ;;
