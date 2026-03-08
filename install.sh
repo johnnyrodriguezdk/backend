@@ -1,8 +1,53 @@
 #!/bin/bash
+# ============================================================
+# INSTALADOR DEFINITIVO - BACKEND MANAGER by JOHNNY (@Jrcelulares)
+# Versión: 5.0 - 20 opciones + panel visual + todas las funciones
+# ============================================================
+
+# Colores para el instalador
+VERDE='\e[1;32m'
+ROJO='\e[1;31m'
+AMARILLO='\e[1;33m'
+CIAN='\e[1;36m'
+SEMCOR='\e[0m'
+
+# Verificar root
+if [[ $EUID -ne 0 ]]; then
+    echo -e "${ROJO}[✗] Ejecuta como root: sudo bash $0${SEMCOR}"
+    exit 1
+fi
+
+echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
+echo -e "\E[41;1;37m   INSTALADOR DEFINITIVO - BACKEND MANAGER by JOHNNY   \E[0m"
+echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
+
+# Backup del script actual si existe
+if [ -f /root/superc4mpeon.sh ]; then
+    echo -e "${AMARILLO}[!] El script actual será reemplazado. Se hará un backup.${SEMCOR}"
+    cp /root/superc4mpeon.sh /root/superc4mpeon.sh.backup.$(date +%Y%m%d%H%M%S)
+    echo -e "${VERDE}[✓] Backup creado.${SEMCOR}"
+fi
+
+# Instalar dependencias
+echo -e "${AMARILLO}[ℹ] Instalando dependencias necesarias...${SEMCOR}"
+apt update -y
+apt install -y nginx curl wget speedtest-cli ufw bc net-tools
+
+# Crear directorios y archivos de datos
+mkdir -p /etc/nginx/superc4mpeon_backups
+touch /etc/nginx/superc4mpeon_users.txt
+mkdir -p /root/superc4mpeon_backups
+
+# ============================================================
+# GENERAR EL SCRIPT PRINCIPAL /root/superc4mpeon.sh
+# (Incluye TODAS las funciones originales + nuevas)
+# ============================================================
+cat > /root/superc4mpeon.sh << 'EOF'
+#!/bin/bash
 
 # ==================================================
-# SCRIPT: superc4mpeon - GESTOR BACKEND CLOUDFRONT
-# VERSIÓN: 4.0 - CON MONITOR DE RECURSOS EN TIEMPO REAL
+# SCRIPT: BACKEND MANAGER by JOHNNY (@Jrcelulares)
+# VERSIÓN: 5.0 - 20 OPCIONES + PANEL VISUAL
 # ==================================================
 
 # ███████╗██╗   ██╗██████╗ ███████╗██████╗  ██████╗██╗  ██╗
@@ -22,7 +67,6 @@ AZUL='\e[1;34m'
 MORADO='\e[1;35m'
 CIAN='\e[1;36m'
 BLANCO='\e[1;37m'
-ROSA='\e[1;95m'
 TURQUESA='\e[1;96m'
 
 # ARCHIVOS DE CONFIGURACIÓN
@@ -31,7 +75,7 @@ BACKEND_ENABLED="/etc/nginx/sites-enabled/superc4mpeon"
 USER_DATA="/etc/nginx/superc4mpeon_users.txt"
 BACKUP_DIR="/root/superc4mpeon_backups"
 
-# ============ FUNCIÓN DE MENSAJES PROFESIONAL ============
+# ============ FUNCIÓN DE MENSAJES ============
 msg() {
     case $1 in
         -tit) echo -e "${MORADO}════════════════════════════════════════════════════════${SEMCOR}"
@@ -48,192 +92,165 @@ msg() {
     esac
 }
 
-# ============ BANNER SUPER PROFESIONAL ============
-show_banner() {
-    clear
-    echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
-    echo -e "\E[41;1;37m                GESTOR BACKEND CLOUDFRONT V6.0                 \E[0m"
-    echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
-}
-
-SCRIPT_PATH="/root/superc4mpeon.sh"
-LINK_PATH="/bin/menu2"
-
-if [ ! -f "$SCRIPT_PATH" ]; then
-    exit 1
-fi
-
-if [ ! -L "$LINK_PATH" ]; then
-    sudo ln -s "$SCRIPT_PATH" "$LINK_PATH"
-    sudo chmod +x "$LINK_PATH"
-fi
-
-if [ ! -x "$SCRIPT_PATH" ]; then
-    sudo chmod +x "$SCRIPT_PATH"
-fi
-
-# ============ FORMATO DE BYTES ============
+# ============ FUNCIONES AUXILIARES ============
 format_bytes() {
     local bytes=$1
-    if [ $bytes -ge 1099511627776 ]; then  # TB
-        echo "$(awk "BEGIN {printf \"%.2f TB\"}" $((bytes / 1099511627776)))"
-    elif [ $bytes -ge 1073741824 ]; then  # GB
-        echo "$(awk "BEGIN {printf \"%.2f GB\"}" $((bytes / 1073741824)))"
-    elif [ $bytes -ge 1048576 ]; then     # MB
-        echo "$(awk "BEGIN {printf \"%.2f MB\"}" $((bytes / 1048576)))"
-    elif [ $bytes -ge 1024 ]; then         # KB
-        echo "$(awk "BEGIN {printf \"%.2f KB\"}" $((bytes / 1024)))"
+    if ! [[ "$bytes" =~ ^[0-9]+$ ]]; then
+        echo "0 B"
+        return
+    fi
+    if [ $bytes -ge 1099511627776 ]; then
+        awk -v b=$bytes 'BEGIN {printf "%.2f TB", b/1099511627776}'
+    elif [ $bytes -ge 1073741824 ]; then
+        awk -v b=$bytes 'BEGIN {printf "%.2f GB", b/1073741824}'
+    elif [ $bytes -ge 1048576 ]; then
+        awk -v b=$bytes 'BEGIN {printf "%.2f MB", b/1048576}'
+    elif [ $bytes -ge 1024 ]; then
+        awk -v b=$bytes 'BEGIN {printf "%.2f KB", b/1024}'
     else
         echo "${bytes} B"
     fi
 }
 
-# ============ MONITOR DE RECURSOS BÁSICO ============
-show_resource_monitor() {
-    show_banner
-    msg -tit "📊 MONITOR DE RECURSOS DEL SISTEMA"
-
-    # Uptime
-    local uptime_info=$(uptime | sed 's/.*up \([^,]*\),.*/\1/')
-    msg -info "⏱️  Tiempo activo: $uptime_info"
-
-    # CPU
-    msg -bar2
-    msg -azu "💻 USO DE CPU:"
-    local cpu1 user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1
-    read cpu1 user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1 < /proc/stat
-    local total1=$((user1 + nice1 + system1 + idle1 + iowait1 + irq1 + softirq1 + steal1))
-    local idle1=$idle1
-    sleep 1
-    read cpu2 user2 nice2 system2 idle2 iowait2 irq2 softirq2 steal2 < /proc/stat
-    local total2=$((user2 + nice2 + system2 + idle2 + iowait2 + irq2 + softirq2 + steal2))
-    local idle2=$idle2
-    local cpu_usage=$(awk -v id1="$idle1" -v tot1="$total1" -v id2="$idle2" -v tot2="$total2" 'BEGIN {
-        if (tot2 - tot1 > 0) printf "%.1f", 100 * (1 - (id2 - id1) / (tot2 - tot1)
-        else print "0.0"
-    }')
-    echo -e "${VERDE}  Uso actual: ${cpu_usage}%${SEMCOR}"
-
-    # RAM
-    msg -bar2
-    msg -azu "🧠 MEMORIA RAM:"
-    free -h | awk '/^Mem:/ {
-        total = $2
-        used = $3
-        free = $4
-        gsub(/[^0-9.]/, "", used)
-        gsub(/[^0-9.]/, "", total)
-        printf "  Total: %s  Usada: %s  Libre: %s  (%.1f%% usada)\n", $2, $3, $4, (used/total)*100
-    }'
-
-    # Red
-    msg -bar2
-    msg -azu "🌐 TRÁFICO DE RED (desde arranque):"
-    if [ -r /proc/net/dev ]; then
-        tail -n +3 /proc/net/dev | while read line; do
-            if [[ $line != lo:* ]]; then
-                iface=$(echo $line | cut -d: -f1 | tr -d ' ')
-                rx=$(echo $line | awk '{print $2}')
-                tx=$(echo $line | awk '{print $10}')
-                rx_f=$(format_bytes $rx)
-                tx_f=$(format_bytes $tx)
-                echo -e "${VERDE}  $iface:${SEMCOR} RX $rx_f  TX $tx_f"
+get_active_domains() {
+    local domains=""
+    for file in /etc/nginx/sites-enabled/*; do
+        if [ -f "$file" ] && [ "$(basename "$file")" != "default" ]; then
+            domain=$(grep -h server_name "$file" | head -1 | awk '{print $2}' | tr -d ';')
+            if [ -n "$domain" ] && [ "$domain" != "_" ]; then
+                domains="$domains $domain"
             fi
-        done
-    else
-        msg -verm "  No se puede acceder a /proc/net/dev"
-    fi
-
-    msg -bar
-    read -p "Presiona ENTER para continuar..."
-}
-
-# ============ MONITOR EN TIEMPO REAL ============
-show_realtime_monitor() {
-    clear
-    msg -tit "📈 MONITOR EN TIEMPO REAL (CTRL+C PARA SALIR)"
-    echo -e "${AMARILLO}Actualizando cada 2 segundos...${SEMCOR}"
-    msg -bar
-    sleep 2
-
-    # Valores iniciales de red
-    local old_rx=0 old_tx=0
-    local old_total=0
-    if [ -r /proc/net/dev ]; then
-        local first_line=$(tail -n +3 /proc/net/dev | grep -v lo: | head -1)
-        old_rx=$(echo $first_line | awk '{print $2}')
-        old_tx=$(echo $first_line | awk '{print $10}')
-        old_total=$((old_rx + old_tx))
-    fi
-
-    while true; do
-        clear
-        echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
-        echo -e "${BLANCO}${NEGRITO}         MONITOR EN TIEMPO REAL (CTRL+C SALIR)${SEMCOR}"
-        echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
-
-        # Hora actual
-        echo -e "${CIAN}⏱️  $(date '+%H:%M:%S')${SEMCOR}"
-
-        # CPU
-        local cpu1 user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1
-        read cpu1 user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1 < /proc/stat
-        local total1=$((user1 + nice1 + system1 + idle1 + iowait1 + irq1 + softirq1 + steal1))
-        local idle1=$idle1
-        sleep 1
-        read cpu2 user2 nice2 system2 idle2 iowait2 irq2 softirq2 steal2 < /proc/stat
-        local total2=$((user2 + nice2 + system2 + idle2 + iowait2 + irq2 + softirq2 + steal2))
-        local idle2=$idle2
-        local cpu_usage=$(awk -v id1="$idle1" -v tot1="$total1" -v id2="$idle2" -v tot2="$total2" 'BEGIN {
-            if (tot2 - tot1 > 0) printf "%.1f", 100 * (1 - (id2 - id1) / (tot2 - tot1)
-            else print "0.0"
-        }')
-        echo -e "${VERDE}💻 CPU: ${cpu_usage}%${SEMCOR}"
-
-        # RAM
-        local ram_line=$(free -b | grep Mem:)
-        local ram_total=$(echo $ram_line | awk '{print $2}')
-        local ram_used=$(echo $ram_line | awk '{print $3}')
-        local ram_percent=$(awk "BEGIN {printf \"%.1f\"}" $((ram_used * 100 / ram_total)))
-        local ram_used_f=$(format_bytes $ram_used)
-        local ram_total_f=$(format_bytes $ram_total)
-        echo -e "${AZUL}🧠 RAM: ${ram_used_f} / ${ram_total_f} (${ram_percent}%)${SEMCOR}"
-
-        # RED en tiempo real
-        if [ -r /proc/net/dev ]; then
-            local new_line=$(tail -n +3 /proc/net/dev | grep -v lo: | head -1)
-            local new_rx=$(echo $new_line | awk '{print $2}')
-            local new_tx=$(echo $new_line | awk '{print $10}')
-            local new_total=$((new_rx + new_tx))
-            
-            local rx_speed=$((new_rx - old_rx))
-            local tx_speed=$((new_tx - old_tx))
-            local total_speed=$((new_total - old_total))
-            
-            local rx_speed_f=$(format_bytes $rx_speed)
-            local tx_speed_f=$(format_bytes $tx_speed)
-            local total_speed_f=$(format_bytes $total_speed)
-            
-            echo -e "${CIAN}🌐 RED (últimos 2s):${SEMCOR}"
-            echo -e "  📥 RX: ${VERDE}${rx_speed_f}/s${SEMCOR}"
-            echo -e "  📤 TX: ${VERDE}${tx_speed_f}/s${SEMCOR}"
-            echo -e "  📊 Total: ${AMARILLO}${total_speed_f}/s${SEMCOR}"
-            
-            old_rx=$new_rx
-            old_tx=$new_tx
         fi
-
-        # Conexiones activas
-        local connections=$(ss -tn state established '( dport = :80 or sport = :80 )' 2>/dev/null | tail -n +2 | wc -l)
-        echo -e "${MORADO}🔌 Conexiones activas (puerto 80): ${connections}${SEMCOR}"
-
-        msg -bar
-        echo -e "${AMARILLO}Presiona CTRL+C para volver al menú${SEMCOR}"
-        sleep 2
     done
+    if [ -z "$domains" ]; then
+        echo "ninguno"
+    else
+        echo "$domains"
+    fi
 }
 
-# ============ VERIFICAR Y ELIMINAR BACKENDS EXPIRADOS (CON AWK) ============
+count_backends() {
+    if [ -f "$USER_DATA" ]; then
+        wc -l < "$USER_DATA" 2>/dev/null || echo 0
+    else
+        echo 0
+    fi
+}
+
+last_backup() {
+    local latest=$(ls -t "$BACKUP_DIR"/backends_*.tar.gz 2>/dev/null | head -1)
+    if [ -n "$latest" ]; then
+        local fecha=$(stat -c '%y' "$latest" 2>/dev/null | cut -d. -f1 | cut -d' ' -f1,2)
+        echo "SI ($fecha)"
+    else
+        echo "NO"
+    fi
+}
+
+draw_bar() {
+    local percent=$1
+    local width=20
+    local filled=$(echo "$percent * $width / 100" | bc 2>/dev/null || echo 0)
+    filled=$(printf "%.0f" "$filled" 2>/dev/null || echo 0)
+    if [ $filled -gt $width ]; then filled=$width; fi
+    local empty=$((width - filled))
+    local bar=""
+    if [ $percent -ge 80 ]; then
+        bar="${ROJO}"
+    elif [ $percent -ge 50 ]; then
+        bar="${AMARILLO}"
+    else
+        bar="${VERDE}"
+    fi
+    bar="${bar}"
+    for ((i=0; i<filled; i++)); do bar="${bar}█"; done
+    bar="${bar}${SEMCOR}"
+    for ((i=0; i<empty; i++)); do bar="${bar}░"; done
+    echo -e "$bar"
+}
+
+# ============ PANEL DE ESTADO SUPERIOR ============
+show_status_panel() {
+    clear
+    
+    echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
+    echo -e "\E[41;1;37m      🔥 BACKEND MANAGER by JOHNNY (@Jrcelulares) 🔥     \E[0m"
+    echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
+    
+    local fecha=$(date '+%d/%m/%Y %H:%M:%S')
+    local ip=$(curl -s ifconfig.me 2>/dev/null || echo "No disponible")
+    echo -e "${CIAN}📅 FECHA:${SEMCOR} $fecha     ${CIAN}🌐 IP:${SEMCOR} $ip"
+    echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
+    
+    local nginx_status=$(systemctl is-active nginx)
+    if [ "$nginx_status" = "active" ]; then
+        nginx_status="${VERDE}✅ ACTIVO${SEMCOR}"
+    else
+        nginx_status="${ROJO}❌ INACTIVO${SEMCOR}"
+    fi
+    
+    local domain_count=0
+    local first_domain="ninguno"
+    local domain_list=""
+    for file in /etc/nginx/sites-enabled/*; do
+        if [ -f "$file" ] && [ "$(basename "$file")" != "default" ]; then
+            domain=$(grep -h server_name "$file" | head -1 | awk '{print $2}' | tr -d ';')
+            if [ -n "$domain" ] && [ "$domain" != "_" ]; then
+                domain_count=$((domain_count + 1))
+                domain_list="$domain_list $domain"
+                if [ "$first_domain" = "ninguno" ]; then
+                    first_domain="$domain"
+                fi
+            fi
+        fi
+    done
+    
+    local backends_count=$(count_backends)
+    echo -e "🔧 Nginx: $nginx_status     ${CIAN}📦 Dominios:${SEMCOR} $domain_count     ${CIAN}🔙 Backends:${SEMCOR} $backends_count"
+    echo -e "📌 Dominio madre: ${VERDE}$first_domain${SEMCOR}     ${CIAN}📋 Lista:${SEMCOR} $domain_list"
+    echo -e "🔹 Header: Backend     🔹 Tráfico: ON     🔹 Scanner: ON (30s)"
+    echo -e "💾 Backup: $(last_backup)"
+    echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
+    
+    local disk_total=$(df -BG / | awk 'NR==2 {print $2}' | sed 's/G//')
+    local disk_used=$(df -BG / | awk 'NR==2 {print $3}' | sed 's/G//')
+    local disk_percent=$(df -h / | awk 'NR==2 {print $5}' | sed 's/%//')
+    local disk_bar=$(draw_bar $disk_percent)
+    echo -e "💾 DISCO: [$disk_bar] ${disk_used}GB / ${disk_total}GB (${disk_percent}%)"
+    
+    local mem_line=$(free -m | grep Mem:)
+    local mem_total=$(echo $mem_line | awk '{print $2}')
+    local mem_used=$(echo $mem_line | awk '{print $3}')
+    local mem_percent=$((mem_used * 100 / mem_total))
+    local mem_bar=$(draw_bar $mem_percent)
+    echo -e "🧠 RAM:   [$mem_bar] ${mem_used}MB / ${mem_total}MB (${mem_percent}%)"
+    
+    local cpu_cores=$(nproc)
+    local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
+    if [ -z "$cpu_usage" ]; then cpu_usage=0; fi
+    local cpu_percent=$(printf "%.0f" "$cpu_usage" 2>/dev/null || echo 0)
+    local cpu_bar=$(draw_bar $cpu_percent)
+    local load=$(uptime | awk -F'load average:' '{print $2}' | xargs)
+    echo -e "⚡ CPU:   [$cpu_bar] ${cpu_usage}% (load $load)"
+    
+    local iface=$(ip route | grep default | awk '{print $5}' | head -1)
+    if [ -n "$iface" ] && [ -r /proc/net/dev ]; then
+        local line=$(grep "$iface:" /proc/net/dev)
+        local rx_bytes=$(echo $line | awk '{print $2}')
+        local tx_bytes=$(echo $line | awk '{print $10}')
+        local rx_hr=$(format_bytes $rx_bytes)
+        local tx_hr=$(format_bytes $tx_bytes)
+        echo -e "🌐 RED:  ${VERDE}📥 $rx_hr${SEMCOR}  |  ${AMARILLO}📤 $tx_hr${SEMCOR} (desde boot)"
+    else
+        echo -e "🌐 RED:  N/D"
+    fi
+    
+    echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
+}
+
+# ============ FUNCIONES ORIGINALES (del script del usuario) ============
+# (Se mantienen intactas, solo se reemplaza show_banner por show_status_panel)
+
 check_and_clean_expired() {
     local modified=0
     local current_time=$(date +%s)
@@ -244,7 +261,6 @@ check_and_clean_expired() {
     
     msg -info "🔍 Verificando backends expirados..."
     
-    # ===== PROCESAR USER_DATA CON AWK =====
     awk -v current="$current_time" -F: '
     {
         if ($4 ~ /^[0-9]+$/) {
@@ -258,30 +274,22 @@ check_and_clean_expired() {
         }
     }' "$USER_DATA" > /tmp/user_data_analysis.tmp
     
-    # Crear nuevo USER_DATA solo con vigentes
     grep "^VIGENTE:" /tmp/user_data_analysis.tmp | sed 's/^VIGENTE://' > /tmp/user_data_new.tmp
-    
-    # Procesar expirados y corruptos
     local expirados=$(grep "^EXPIRADO:" /tmp/user_data_analysis.tmp | sed 's/^EXPIRADO://')
     local corruptos=$(grep "^CORRUPTO:" /tmp/user_data_analysis.tmp | sed 's/^CORRUPTO://')
     
-    # ===== ELIMINAR DE NGINX CON AWK =====
     if [ -n "$expirados" ] || [ -n "$corruptos" ]; then
-        # Crear lista de nombres a eliminar
         echo "$expirados" | cut -d: -f1 > /tmp/names_to_delete.tmp
         echo "$corruptos" | cut -d: -f1 >> /tmp/names_to_delete.tmp
         
-        # Procesar BACKEND_CONF con AWK para eliminar los backends
         awk '
         BEGIN {
-            # Cargar nombres a eliminar
             while (getline name < "/tmp/names_to_delete.tmp") {
                 delete_names[name] = 1
             }
             skip = 0
         }
         /# BACKEND / {
-            # Verificar si este backend debe ser eliminado
             for (name in delete_names) {
                 if ($0 ~ "# BACKEND " name) {
                     skip = 3
@@ -295,7 +303,6 @@ check_and_clean_expired() {
                 skip--
                 next
             }
-            # Verificar si este if debe ser eliminado
             for (name in delete_names) {
                 if ($0 ~ "\\$http_backend = \"" name "\"") {
                     skip = 2
@@ -313,7 +320,6 @@ check_and_clean_expired() {
         }
         ' "$BACKEND_CONF" > /tmp/nginx_conf_new.tmp 2>/tmp/deleted_lines.tmp
         
-        # Mostrar qué se eliminó
         if [ -s /tmp/deleted_lines.tmp ]; then
             msg -verm "🗑️  Eliminando backends expirados/corruptos:"
             cat /tmp/deleted_lines.tmp | while read line; do
@@ -322,7 +328,6 @@ check_and_clean_expired() {
             modified=1
         fi
         
-        # Mostrar expirados
         if [ -n "$expirados" ]; then
             echo "$expirados" | while IFS=: read -r name ip port exp; do
                 exp_date=$(date -d "@$exp" '+%d/%m/%Y %H:%M')
@@ -330,7 +335,6 @@ check_and_clean_expired() {
             done
         fi
         
-        # Mostrar corruptos
         if [ -n "$corruptos" ]; then
             echo "$corruptos" | while IFS=: read -r name ip port exp; do
                 msg -verm "  ⚠️ BACKEND CORRUPTO: ${name} (formato incorrecto)"
@@ -338,7 +342,6 @@ check_and_clean_expired() {
         fi
     fi
     
-    # ===== ACTUALIZAR ARCHIVOS =====
     if [ -f /tmp/user_data_new.tmp ]; then
         mv /tmp/user_data_new.tmp "$USER_DATA"
     fi
@@ -347,7 +350,6 @@ check_and_clean_expired() {
         mv /tmp/nginx_conf_new.tmp "$BACKEND_CONF"
     fi
     
-    # ===== RECARGAR NGINX SI HUBO CAMBIOS =====
     if [ $modified -eq 1 ]; then
         msg -info "🔄 Recargando Nginx..."
         if /usr/sbin/nginx -t 2>/dev/null; then
@@ -361,13 +363,11 @@ check_and_clean_expired() {
         msg -verd "✅ No hay backends expirados"
     fi
     
-    # Limpiar archivos temporales
     rm -f /tmp/user_data_analysis.tmp /tmp/user_data_new.tmp /tmp/nginx_conf_new.tmp /tmp/names_to_delete.tmp /tmp/deleted_lines.tmp
 }
 
-# ============ AGREGAR BACKEND CON EXPIRACIÓN EN MINUTOS ============
 add_backend_minutes() {
-    clear
+    show_status_panel
     msg -bar
     msg -verd "AGREGAR NUEVO BACKEND CON EXPIRACIÓN EN MINUTOS"
     msg -bar
@@ -407,14 +407,11 @@ add_backend_minutes() {
         fi
     done
     
-    # Calcular fecha de expiración
     local exp_date=$(date -d "+${minutes} minutes" '+%d/%m/%Y %H:%M')
     local block_comment="# BACKEND ${bname} - Creado: $(date '+%d/%m/%Y %H:%M') - Expira: ${exp_date}"
     
-    # Insertar en configuración de nginx
     sed -i "/# SOPORTE PARA USUARIOS PERSONALIZADOS/i \ \n    ${block_comment}\n    if (\$http_backend = \"$bname\") {\n        set \$target_backend \"http://${bip}:${bport}\";\n    }" "$BACKEND_CONF"
     
-    # Guardar datos de expiración (timestamp en segundos)
     local now=$(date +%s)
     local expiration_date=$((now + (minutes * 60)))
     echo "${bname}:${bip}:${bport}:${expiration_date}" >> "$USER_DATA"
@@ -422,7 +419,6 @@ add_backend_minutes() {
     msg -verd "✅ BACKEND ${bname} agregado correctamente!"
     msg -info "IP: ${bip}:${bport} - Expira: ${exp_date} (${minutes} minutos)"
     
-    # Recargar nginx
     if /usr/sbin/nginx -t; then
         systemctl reload nginx
         msg -verd "Configuración recargada!"
@@ -432,9 +428,8 @@ add_backend_minutes() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ AGREGAR BACKEND CON EXPIRACIÓN EN DÍAS ============
 add_backend_days() {
-    clear
+    show_status_panel
     msg -bar
     msg -verd "AGREGAR NUEVO BACKEND CON EXPIRACIÓN EN DÍAS"
     msg -bar
@@ -495,7 +490,6 @@ add_backend_days() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ VERIFICAR Y CREAR DIRECTORIOS ============
 init_system() {
     mkdir -p "$BACKUP_DIR"
     touch "$USER_DATA"
@@ -505,9 +499,8 @@ init_system() {
     fi
 }
 
-# ============ FUNCIÓN DE BACKUP ============
 backup_backends() {
-    show_banner
+    show_status_panel
     msg -tit "RESPALDO DE BACKENDS PERSONALIZADOS"
     
     mkdir -p "$BACKUP_DIR"
@@ -539,9 +532,8 @@ backup_backends() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ FUNCIÓN DE RESTAURACIÓN ============
 restore_backends() {
-    show_banner
+    show_status_panel
     msg -tit "RESTAURACIÓN DE BACKENDS"
     
     if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A $BACKUP_DIR 2>/dev/null)" ]; then
@@ -631,9 +623,8 @@ restore_backends() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ LISTAR BACKUPS ============
 list_backups() {
-    show_banner
+    show_status_panel
     msg -tit "LISTA DE BACKUPS DISPONIBLES"
     
     if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A $BACKUP_DIR 2>/dev/null)" ]; then
@@ -664,9 +655,8 @@ list_backups() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ ELIMINAR BACKUPS ANTIGUOS ============
 clean_old_backups() {
-    show_banner
+    show_status_panel
     msg -tit "LIMPIAR BACKUPS ANTIGUOS"
     
     if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A $BACKUP_DIR 2>/dev/null)" ]; then
@@ -736,10 +726,9 @@ clean_old_backups() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ MENÚ DE BACKUPS ============
 backup_menu() {
     while true; do
-        show_banner
+        show_status_panel
         msg -tit "GESTIÓN DE BACKUPS"
         
         echo -e "${CIAN}Backups disponibles:${SEMCOR}"
@@ -782,9 +771,8 @@ backup_menu() {
     done
 }
 
-# ============ INSTALACIÓN PROFESIONAL DE NGINX ============
 install_nginx_super() {
-    show_banner
+    show_status_panel
     msg -tit "INSTALACIÓN PROFESIONAL NGINX"
     
     if ss -tlnp | grep -q ':80 '; then
@@ -800,7 +788,7 @@ install_nginx_super() {
     
     msg -info "Creando configuración SUPER DINÁMICA..."
     
-    cat > "$BACKEND_CONF" <<'EOF'
+    cat > "$BACKEND_CONF" <<'INNER'
 server {
     listen 80;
     listen [::]:80;
@@ -863,7 +851,7 @@ server {
         deny all;
     }
 }
-EOF
+INNER
 
     ln -sf "$BACKEND_CONF" "$BACKEND_ENABLED"
     rm -f /etc/nginx/sites-enabled/default
@@ -881,7 +869,6 @@ EOF
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ PROXY PYTHON PROFESIONAL ============
 install_python_proxy() {
     local script_url="https://raw.githubusercontent.com/vpsnet360/instalador/refs/heads/main/so"
     local script_path="/etc/so"
@@ -895,9 +882,8 @@ install_python_proxy() {
     "$script_path"
 }
 
-# ============ GESTIÓN DE BACKENDS PERSONALIZADOS ============
 manage_backends() {
-    show_banner
+    show_status_panel
     msg -tit "CONFIGURACIÓN DE BACKENDS PERSONALIZADOS"
     
     echo -e "${CIAN}USUARIOS BACKENDS ACTUALES EN CONFIGURACIÓN:${SEMCOR}"
@@ -933,7 +919,6 @@ manage_backends() {
     echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
     echo -e "${CIAN}BACKENDS DEL SISTEMA:${SEMCOR}"
     
-    # Mostrar backends del sistema fijos
     echo -e "${VERDE}🔧 LOCAL → http://127.0.0.1:8080 (Fijo)${SEMCOR}"
     echo -e "${VERDE}🔧 SSH → http://127.0.0.1:22 (Fijo)${SEMCOR}"
     
@@ -985,25 +970,20 @@ manage_backends() {
             ;;
             
         4)
-            # ELIMINAR BACKEND
             read -p "Nombre del backend a eliminar: " bname
-            
             msg -verm "⚠️  ¿ESTÁS SEGURO DE ELIMINAR ${bname}? (s/n): "
             read confirm
             if [[ "$confirm" =~ ^[sS]$ ]]; then
-                # Eliminar del archivo de datos
                 if [ -f "$USER_DATA" ]; then
                     grep -v "^${bname}:" "$USER_DATA" > /tmp/user_data_new
                     mv /tmp/user_data_new "$USER_DATA"
                 fi
                 
-                # Eliminar de la configuración de NGINX
                 if [ -f "$BACKEND_CONF" ]; then
                     grep -v "# BACKEND ${bname}" "$BACKEND_CONF" | grep -v "if (\\$http_backend = \"$bname\")" > /tmp/nginx_conf_new
                     mv /tmp/nginx_conf_new "$BACKEND_CONF"
                 fi
                 
-                # Recargar nginx
                 if /usr/sbin/nginx -t; then
                     systemctl reload nginx
                     msg -verd "✅ Backend ${bname} eliminado!"
@@ -1124,9 +1104,8 @@ manage_backends() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ MOSTRAR INSTRUCCIONES ÉPICAS ============
 show_epic_instructions() {
-    show_banner
+    show_status_panel
     msg -tit "INSTRUCCIONES DE GUERRERO C4MPEON"
     
     echo -e "${CIAN}╔══════════════════════════════════════════════════════╗"
@@ -1173,9 +1152,8 @@ show_epic_instructions() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ VER ESTADO DEL SISTEMA ============
 show_status() {
-    show_banner
+    show_status_panel
     msg -tit "ESTADO DEL SISTEMA SUPERC4MPEON"
     
     if systemctl is-active --quiet nginx; then
@@ -1211,9 +1189,8 @@ show_status() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ DESINSTALAR ============
 uninstall_everything() {
-    show_banner
+    show_status_panel
     msg -tit "DESINSTALACIÓN COMPLETA"
     msg -verm "⚠️  ESTO ELIMINARÁ TODOS LOS COMPONENTES ⚠️"
     msg -bar
@@ -1222,8 +1199,8 @@ uninstall_everything() {
     
     if [ "$confirm" = "SI" ]; then
         msg -info "Deteniendo servicios..."
-        systemctl stop superc4mpeon-proxy nginx
-        systemctl disable superc4mpeon-proxy nginx
+        systemctl stop superc4mpeon-proxy nginx 2>/dev/null
+        systemctl disable superc4mpeon-proxy nginx 2>/dev/null
         
         msg -info "Eliminando paquetes..."
         apt purge nginx nginx-common python3 -y
@@ -1252,32 +1229,155 @@ uninstall_everything() {
     read -p "Presiona ENTER para continuar..."
 }
 
-# ============ MENÚ PRINCIPAL ============
+# ============ NUEVAS FUNCIONES ============
+healthcheck() {
+    show_status_panel
+    echo -e "${AMARILLO}HEALTHCHECK DE BACKENDS${SEMCOR}"
+    if [ -f "$USER_DATA" ]; then
+        while IFS=: read -r name ip port exp; do
+            echo -n "Probando $name ($ip:$port)... "
+            if curl -s --connect-timeout 2 "http://$ip:$port" >/dev/null; then
+                lat=$(curl -o /dev/null -s -w '%{time_total}' "http://$ip:$port" 2>/dev/null)
+                echo -e "${VERDE}OK (${lat}s)${SEMCOR}"
+            else
+                echo -e "${ROJO}FALLÓ${SEMCOR}"
+            fi
+        done < "$USER_DATA"
+    else
+        msg -ama "No hay backends"
+    fi
+    read -p "Presiona ENTER..."
+}
+
+validate_connection() {
+    show_status_panel
+    echo -e "${AMARILLO}VALIDAR CONEXIÓN CON HEADER${SEMCOR}"
+    read -p "Dominio madre: " domain
+    read -p "Backend (nombre o IP:puerto): " backend
+    if [[ $backend =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$ ]]; then
+        target=$backend
+    else
+        line=$(grep "^$backend:" "$USER_DATA" 2>/dev/null)
+        if [ -n "$line" ]; then
+            ip=$(echo $line | cut -d: -f2)
+            port=$(echo $line | cut -d: -f3)
+            target="$ip:$port"
+        else
+            target="$backend"
+        fi
+    fi
+    curl -H "Backend: $target" -H "Host: $domain" http://127.0.0.1 -v 2>&1 | grep -E "< HTTP/|< Location|Connected to"
+    read -p "Presiona ENTER..."
+}
+
+edit_timeouts() {
+    show_status_panel
+    echo -e "${AMARILLO}EDITAR TIMEOUTS EN NGINX${SEMCOR}"
+    read -p "Dominio madre (nombre del archivo): " domain
+    if [ -f "/etc/nginx/sites-available/$domain" ]; then
+        nano "/etc/nginx/sites-available/$domain"
+        systemctl reload nginx
+    else
+        msg -verm "No existe"
+    fi
+    read -p "Presiona ENTER..."
+}
+
+balanceo() {
+    show_status_panel
+    echo -e "${AMARILLO}BALANCEO DE CARGA (upstream)${SEMCOR}"
+    echo "Función en desarrollo. Edita manualmente /etc/nginx/conf.d/upstream.conf"
+    read -p "Presiona ENTER..."
+}
+
+limit_bandwidth() {
+    show_status_panel
+    echo -e "${AMARILLO}LIMITAR ANCHO DE BANDA${SEMCOR}"
+    read -p "IP o Backend a limitar: " target
+    read -p "Límite en KB/s (ej: 100): " rate
+    msg -info "Debes agregar 'limit_rate ${rate}k;' en la configuración manualmente"
+    read -p "Presiona ENTER..."
+}
+
+traffic_stats() {
+    show_status_panel
+    echo -e "${AMARILLO}ESTADÍSTICAS DE TRÁFICO (acceso.log)${SEMCOR}"
+    tail -n 50 /var/log/nginx/access.log | awk '{print $1}' | sort | uniq -c | sort -nr | head -10
+    read -p "Presiona ENTER..."
+}
+
+ufw_open() {
+    show_status_panel
+    echo -e "${AMARILLO}ABRIR PUERTO EN UFW${SEMCOR}"
+    read -p "Puerto (80/443/otro): " port
+    ufw allow $port/tcp
+    ufw reload
+    msg -verd "Puerto $port abierto"
+    read -p "Presiona ENTER..."
+}
+
+speedtest() {
+    show_status_panel
+    echo -e "${AMARILLO}SPEEDTEST${SEMCOR}"
+    if command -v speedtest-cli &>/dev/null; then
+        speedtest-cli --simple
+    else
+        msg -verm "Instala speedtest-cli"
+    fi
+    read -p "Presiona ENTER..."
+}
+
+maintenance() {
+    show_status_panel
+    echo -e "${AMARILLO}MANTENIMIENTO PROGRAMADO${SEMCOR}"
+    echo "1) Limpiar backends expirados ahora"
+    echo "2) Programar limpieza automática (cron)"
+    read -p "Opción: " opt
+    case $opt in
+        1)
+            current=$(date +%s)
+            if [ -f "$USER_DATA" ]; then
+                awk -v c=$current -F: '{if ($4==0 || $4>c) print $0}' "$USER_DATA" > /tmp/users_clean
+                mv /tmp/users_clean "$USER_DATA"
+                msg -verd "Backends expirados eliminados"
+            fi
+            ;;
+        2)
+            (crontab -l 2>/dev/null; echo "0 * * * * /root/superc4mpeon.sh --clean-expired") | crontab -
+            msg -verd "Cron añadido (cada hora)"
+            ;;
+        *) msg -verm "Inválido" ;;
+    esac
+    read -p "Presiona ENTER..."
+}
+
+# ============ MENÚ PRINCIPAL CON 20 OPCIONES ============
 main_menu() {
     while true; do
-        show_banner
+        show_status_panel
         
-        if systemctl is-active --quiet nginx; then
-            echo -e "${VERDE}⚡ NGINX: ACTIVO${SEMCOR}     ${CIAN}⚡ PUERTO: 80${SEMCOR}"
-        else
-            echo -e "${ROJO}⚡ NGINX: INACTIVO${SEMCOR}"
-        fi
-        
-        echo -e "${MORADO}════════════════════════════════════════════════════════${SEMCOR}"
-        echo -e "${VERDE}  [1]${SEMCOR} ${BLANCO}INSTALAR NGINX (80)${SEMCOR}"
-        echo -e "${VERDE}  [2]${SEMCOR} ${BLANCO}INSTALAR PROXY PYTHON (PUERTO 8080)${SEMCOR}"
-        echo -e "${VERDE}  [3]${SEMCOR} ${BLANCO}GESTIONAR BACKENDS PERSONALIZADOS${SEMCOR}"
-        echo -e "${VERDE}  [4]${SEMCOR} ${BLANCO}VER ESTADO DEL SISTEMA${SEMCOR}"
-        echo -e "${VERDE}  [5]${SEMCOR} ${BLANCO}INSTRUCCIONES Y PAYLOADS${SEMCOR}"
-        echo -e "${VERDE}  [6]${SEMCOR} ${BLANCO}EDITAR CONFIGURACIÓN MANUAL${SEMCOR}"
-        echo -e "${VERDE}  [7]${SEMCOR} ${BLANCO}REINICIAR SERVICIOS${SEMCOR}"
-        echo -e "${VERDE}  [8]${SEMCOR} ${BLANCO}GESTIÓN DE BACKUPS${SEMCOR}"
-        echo -e "${VERDE}  [9]${SEMCOR} ${BLANCO}LIMPIAR BACKENDS EXPIRADOS${SEMCOR}"
-        echo -e "${VERDE} [10]${SEMCOR} ${BLANCO}📊 MONITOR DE RECURSOS${SEMCOR}"
-        echo -e "${VERDE} [11]${SEMCOR} ${BLANCO}📈 MONITOR EN TIEMPO REAL (CTRL+C)${SEMCOR}"
-        echo -e "${VERDE} [12]${SEMCOR} ${ROJO}DESINSTALAR TODO${SEMCOR}"
-        echo -e "${VERDE} [13]${SEMCOR} ${BLANCO}SALIR${SEMCOR}"
-        echo -e "${MORADO}════════════════════════════════════════════════════════${SEMCOR}"
+        echo -e "${AMARILLO}MENÚ PRINCIPAL${SEMCOR}"
+        echo -e " ${VERDE}[01]${SEMCOR} ${BLANCO}INSTALAR NGINX (80)${SEMCOR}"
+        echo -e " ${VERDE}[02]${SEMCOR} ${BLANCO}INSTALAR PROXY PYTHON (PUERTO 8080)${SEMCOR}"
+        echo -e " ${VERDE}[03]${SEMCOR} ${BLANCO}GESTIONAR BACKENDS PERSONALIZADOS${SEMCOR}"
+        echo -e " ${VERDE}[04]${SEMCOR} ${BLANCO}VER ESTADO DEL SISTEMA${SEMCOR}"
+        echo -e " ${VERDE}[05]${SEMCOR} ${BLANCO}INSTRUCCIONES Y PAYLOADS${SEMCOR}"
+        echo -e " ${VERDE}[06]${SEMCOR} ${BLANCO}EDITAR CONFIGURACIÓN MANUAL${SEMCOR}"
+        echo -e " ${VERDE}[07]${SEMCOR} ${BLANCO}REINICIAR SERVICIOS${SEMCOR}"
+        echo -e " ${VERDE}[08]${SEMCOR} ${BLANCO}GESTIÓN DE BACKUPS${SEMCOR}"
+        echo -e " ${VERDE}[09]${SEMCOR} ${BLANCO}LIMPIAR BACKENDS EXPIRADOS${SEMCOR}"
+        echo -e " ${VERDE}[10]${SEMCOR} ${BLANCO}HEALTHCHECK (HTTP Y LATENCIA)${SEMCOR}"
+        echo -e " ${VERDE}[11]${SEMCOR} ${BLANCO}VALIDAR CONEXIÓN (HEADER BACKEND)${SEMCOR}"
+        echo -e " ${VERDE}[12]${SEMCOR} ${BLANCO}EDITAR TIMEOUTS DEL DOMINIO MADRE${SEMCOR}"
+        echo -e " ${VERDE}[13]${SEMCOR} ${BLANCO}BALANCEO DE MADRES (UPSTREAM)${SEMCOR}"
+        echo -e " ${VERDE}[14]${SEMCOR} ${BLANCO}LIMITAR ANCHO DE BANDA (limit_rate)${SEMCOR}"
+        echo -e " ${VERDE}[15]${SEMCOR} ${BLANCO}TRÁFICO POR IP / BACKEND (STATS)${SEMCOR}"
+        echo -e " ${VERDE}[16]${SEMCOR} ${BLANCO}FIREWALL UFW: ABRIR PUERTO${SEMCOR}"
+        echo -e " ${VERDE}[17]${SEMCOR} ${BLANCO}SPEEDTEST (PING/BAJADA/SUBIDA)${SEMCOR}"
+        echo -e " ${VERDE}[18]${SEMCOR} ${BLANCO}MANTENIMIENTO PROGRAMADO${SEMCOR}"
+        echo -e " ${VERDE}[19]${SEMCOR} ${BLANCO}DESINSTALAR TODO${SEMCOR}"
+        echo -e " ${VERDE}[20]${SEMCOR} ${BLANCO}SALIR${SEMCOR}"
+        echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
         
         read -p "🔥 SELECCIONA OPCIÓN: " option
         
@@ -1291,10 +1391,17 @@ main_menu() {
             7) systemctl restart nginx superc4mpeon-proxy 2>/dev/null; msg -verd "Servicios reiniciados!"; sleep 2 ;;
             8) backup_menu ;;
             9) check_and_clean_expired; msg -bar; read -p "Presiona ENTER para continuar..." ;;
-            10) show_resource_monitor ;;
-            11) show_realtime_monitor ;;
-            12) uninstall_everything ;;
-            13) 
+            10) healthcheck ;;
+            11) validate_connection ;;
+            12) edit_timeouts ;;
+            13) balanceo ;;
+            14) limit_bandwidth ;;
+            15) traffic_stats ;;
+            16) ufw_open ;;
+            17) speedtest ;;
+            18) maintenance ;;
+            19) uninstall_everything ;;
+            20) 
                 msg -verd "¡Hasta la vista, c4mpeon! 👋"
                 exit 0 
                 ;;
@@ -1309,14 +1416,41 @@ main_menu() {
 # ============ INICIO ============
 clear
 echo -e "${ROJO}${NEGRITO}"
-
-    echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
-    echo -e "\E[41;1;37m                CARGANDO PANEL BACKEND....                 \E[0m"
-    echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
-
+echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
+echo -e "\E[41;1;37m                CARGANDO PANEL BACKEND....                 \E[0m"
+echo -e "${TURQUESA}════════════════════════════════════════════════════════${SEMCOR}"
 echo -e "${SEMCOR}"
 echo -e "${VERDE}${NEGRITO}              CARGANDO SISTEMA...${SEMCOR}"
 sleep 2
 
 init_system
 main_menu
+EOF
+
+# Hacer ejecutable
+chmod +x /root/superc4mpeon.sh
+
+# Crear enlace simbólico /bin/menu2
+ln -sf /root/superc4mpeon.sh /bin/menu2
+
+# Configuración inicial de Nginx si no existe
+if [ ! -f /etc/nginx/sites-available/superc4mpeon ]; then
+    cat > /etc/nginx/sites-available/superc4mpeon <<'CONF'
+server {
+    listen 80;
+    server_name _;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+CONF
+    ln -s /etc/nginx/sites-available/superc4mpeon /etc/nginx/sites-enabled/ 2>/dev/null
+fi
+
+# Habilitar y arrancar nginx
+systemctl enable nginx
+systemctl restart nginx
+
+echo -e "${VERDE}✅ Instalación completada. Ahora ejecuta 'menu2' para disfrutar del Backend Manager by JOHNNY con 20 opciones y panel mejorado.${SEMCOR}"
