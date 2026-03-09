@@ -1,5 +1,5 @@
 # INSTALL SCRIPT 
-T.ME/@JRCELULARES
+(https://t.me/Jrcelulares)
 
 
 wget https://raw.githubusercontent.com/johnnyrodriguezdk/backend/refs/heads/main/install.sh && chmod +x install.sh && ./install.sh
