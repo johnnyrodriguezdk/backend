@@ -2,7 +2,7 @@
 T.ME/@JRCELULARES
 
 
-https://raw.githubusercontent.com/johnnyrodriguezdk/backend/refs/heads/main/install.sh
+wget https://raw.githubusercontent.com/johnnyrodriguezdk/backend/refs/heads/main/install.sh && chmod +x install.sh && ./install.sh
 
 # INSTALL BOT MANAGER
 
