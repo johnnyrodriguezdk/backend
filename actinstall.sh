@@ -217,55 +217,462 @@ ln -sf /etc/nginx/sites-available/backend-panel /etc/nginx/sites-enabled/ 2>/dev
 nginx -t && systemctl reload nginx
 
 # ============ PANEL WEB BÁSICO ============
-cat > "${BM_WEB}/index.html" << 'EOF'
+cat > /var/www/backend-manager/index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Backend Manager Pro</title>
+    <title>Backend Manager Pro · Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { background: #0f172a; color: #e2e8f0; }
-        .card { background: #1e293b; border: 1px solid #334155; }
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-purple: #8b5cf6;
+        }
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            transition: all 0.2s;
+        }
+        .card:hover {
+            border-color: var(--accent-blue);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.3);
+        }
+        .nav-link {
+            color: var(--text-secondary);
+            transition: color 0.2s;
+            font-weight: 500;
+        }
+        .nav-link:hover {
+            color: var(--accent-blue);
+        }
+        .nav-link.active {
+            color: var(--accent-blue);
+            border-bottom: 2px solid var(--accent-blue);
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .status-active {
+            background-color: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+        .status-expired {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+        .progress-bar {
+            height: 0.5rem;
+            background-color: #334155;
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.3s ease;
+        }
+        .progress-blue { background-color: var(--accent-blue); }
+        .progress-green { background-color: var(--accent-green); }
+        .progress-yellow { background-color: var(--accent-yellow); }
     </style>
 </head>
-<body class="p-6">
+<body class="p-4 md:p-6">
     <div class="max-w-7xl mx-auto">
-        <h1 class="text-3xl font-bold text-blue-400 mb-6">⚡ Backend Manager Pro</h1>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div class="card p-4 rounded-lg">
-                <div class="text-sm text-gray-400">CPU</div>
-                <div id="cpu" class="text-2xl font-bold">--</div>
+        <!-- Header con navegación -->
+        <div class="flex flex-wrap items-center justify-between mb-8">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-bolt text-2xl text-blue-400"></i>
+                <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">Backend Manager Pro</span>
             </div>
-            <div class="card p-4 rounded-lg">
-                <div class="text-sm text-gray-400">RAM</div>
-                <div id="ram" class="text-2xl font-bold">--</div>
-            </div>
-            <div class="card p-4 rounded-lg">
-                <div class="text-sm text-gray-400">DISCO</div>
-                <div id="disk" class="text-2xl font-bold">--</div>
-            </div>
-            <div class="card p-4 rounded-lg">
-                <div class="text-sm text-gray-400">UPTIME</div>
-                <div id="uptime" class="text-2xl font-bold">--</div>
+            <div class="flex flex-wrap gap-4 text-sm mt-2 md:mt-0">
+                <a href="#" class="nav-link active">Panel</a>
+                <a href="#" class="nav-link">Servicios</a>
+                <a href="#" class="nav-link">Comprar</a>
+                <a href="#" class="nav-link">VPS</a>
+                <a href="#" class="nav-link">Financiero</a>
+                <a href="#" class="nav-link">Herramientas</a>
+                <a href="#" class="nav-link">Academia</a>
+                <a href="#" class="nav-link">Afiliados</a>
+                <a href="#" class="nav-link"><i class="fas fa-search"></i></a>
+                <a href="#" class="nav-link"><i class="fas fa-cog"></i></a>
             </div>
         </div>
+
+        <!-- Tarjetas de resumen -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="card p-5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-400">Servicios Activos</p>
+                        <p class="text-2xl font-bold" id="active-services">0</p>
+                    </div>
+                    <div class="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-cloud text-blue-400"></i>
+                    </div>
+                </div>
+                <div class="mt-2 text-xs text-gray-500">CloudFront · <span id="active-domains">0</span> dominios</div>
+            </div>
+            <div class="card p-5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-400">Total Afiliados</p>
+                        <p class="text-2xl font-bold" id="total-affiliates">0</p>
+                    </div>
+                    <div class="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-users text-green-400"></i>
+                    </div>
+                </div>
+                <div class="mt-2 text-xs text-gray-500">Usuarios referidos</div>
+            </div>
+            <div class="card p-5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-400">Tickets Abiertos</p>
+                        <p class="text-2xl font-bold" id="open-tickets">0</p>
+                    </div>
+                    <div class="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-ticket text-yellow-400"></i>
+                    </div>
+                </div>
+                <div class="mt-2 text-xs text-gray-500">Soporte técnico</div>
+            </div>
+            <div class="card p-5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-400">Notificaciones</p>
+                        <p class="text-2xl font-bold" id="notifications">3</p>
+                    </div>
+                    <div class="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-bell text-purple-400"></i>
+                    </div>
+                </div>
+                <div class="mt-2 text-xs text-gray-500">Alertas del sistema</div>
+            </div>
+        </div>
+
+        <!-- Fila principal: Estado de servicios y gráficos -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            <!-- Columna izquierda: Estado de servicios -->
+            <div class="lg:col-span-1 space-y-6">
+                <div class="card p-5">
+                    <h3 class="font-semibold mb-4 flex items-center gap-2">
+                        <i class="fas fa-chart-line text-blue-400"></i>
+                        Status dos Servicios
+                    </h3>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>CloudFront</span>
+                                <span class="text-gray-400" id="cloudfront-status">1/3 dominios</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div id="cloudfront-progress" class="progress-fill progress-blue" style="width: 33%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>Online</span>
+                                <span class="text-gray-400" id="online-percent">98.8% uptime</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div id="online-progress" class="progress-fill progress-green" style="width: 98.8%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Distribución de servicios (gráfico de pastel) -->
+                <div class="card p-5">
+                    <h3 class="font-semibold mb-4 flex items-center gap-2">
+                        <i class="fas fa-chart-pie text-green-400"></i>
+                        Distribución
+                    </h3>
+                    <canvas id="distributionChart" height="150"></canvas>
+                    <div class="mt-4 text-sm text-center text-gray-400">Servicios por tipo</div>
+                </div>
+
+                <!-- Vencimientos próximos -->
+                <div class="card p-5">
+                    <h3 class="font-semibold mb-4 flex items-center gap-2">
+                        <i class="fas fa-clock text-yellow-400"></i>
+                        Vencimientos
+                    </h3>
+                    <div id="expiring-list" class="space-y-3">
+                        <!-- Se llenará con JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna derecha: Gráfico de uptime 24h -->
+            <div class="lg:col-span-2 card p-5">
+                <h3 class="font-semibold mb-4 flex items-center gap-2">
+                    <i class="fas fa-chart-bar text-blue-400"></i>
+                    Uptime 24h
+                </h3>
+                <canvas id="uptimeChart" height="200"></canvas>
+                <div class="mt-4 flex justify-between text-xs text-gray-500" id="uptime-labels">
+                    <!-- Se llenará con JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de planes (Bronce, Plata, Oro, Platino) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div class="card p-5 text-center">
+                <h4 class="text-lg font-bold text-amber-600">Bronce</h4>
+                <p class="text-2xl font-bold my-2">R$ 54,99 <span class="text-sm font-normal text-gray-400">/mes</span></p>
+                <ul class="text-sm text-left space-y-2 my-4 text-gray-300">
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>Intel Xeon Gold 6138</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>2GB RAM</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>2 vCPU</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>IP dedicada</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>Uplink +1Gbps</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>20GB SSD</li>
+                </ul>
+                <button class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition">Contratar Ahora</button>
+            </div>
+            <div class="card p-5 text-center">
+                <h4 class="text-lg font-bold text-gray-400">Plata</h4>
+                <p class="text-2xl font-bold my-2">R$ 74,99 <span class="text-sm font-normal text-gray-400">/mes</span></p>
+                <ul class="text-sm text-left space-y-2 my-4 text-gray-300">
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>Intel Xeon Gold 6138</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>4GB RAM</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>2 vCPU</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>IP dedicada</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>Uplink +1Gbps</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>20GB SSD</li>
+                </ul>
+                <button class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition">Contratar Ahora</button>
+            </div>
+            <div class="card p-5 text-center">
+                <h4 class="text-lg font-bold text-yellow-500">Oro</h4>
+                <p class="text-2xl font-bold my-2">R$ 94,99 <span class="text-sm font-normal text-gray-400">/mes</span></p>
+                <ul class="text-sm text-left space-y-2 my-4 text-gray-300">
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>Intel Xeon Gold 6138</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>4GB RAM</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>4 vCPU</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>IP dedicada</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>Uplink +1Gbps</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>30GB SSD</li>
+                </ul>
+                <button class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition">Contratar Ahora</button>
+            </div>
+            <div class="card p-5 text-center">
+                <h4 class="text-lg font-bold text-purple-400">Platino</h4>
+                <p class="text-2xl font-bold my-2">R$ 114,99 <span class="text-sm font-normal text-gray-400">/mes</span></p>
+                <ul class="text-sm text-left space-y-2 my-4 text-gray-300">
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>Intel Xeon Gold 6138</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>6GB RAM</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>4 vCPU</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>IP dedicada</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>Uplink +1Gbps</li>
+                    <li><i class="fas fa-check text-green-400 mr-2"></i>40GB SSD</li>
+                </ul>
+                <button class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition">Contratar Ahora</button>
+            </div>
+        </div>
+
+        <!-- Fila inferior: Tickets y Configuración -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Tickets -->
+            <div class="card p-5">
+                <h3 class="font-semibold mb-4 flex items-center gap-2">
+                    <i class="fas fa-life-ring text-blue-400"></i>
+                    Soporte / Tickets
+                </h3>
+                <div id="tickets-container" class="text-center py-8 text-gray-500">
+                    <i class="fas fa-ticket-alt text-4xl mb-2"></i>
+                    <p>No se encontraron tickets</p>
+                    <button class="mt-4 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm transition">
+                        <i class="fas fa-plus mr-2"></i>Crear Ticket
+                    </button>
+                </div>
+            </div>
+
+            <!-- Configuración de Tema -->
+            <div class="card p-5">
+                <h3 class="font-semibold mb-4 flex items-center gap-2">
+                    <i class="fas fa-paint-brush text-purple-400"></i>
+                    Configuración · Tema
+                </h3>
+                <p class="text-sm text-gray-400 mb-3">Personaliza tu experiencia</p>
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <button class="theme-option px-3 py-1 rounded-full text-sm bg-gray-700 text-white" data-theme="dark">Dark</button>
+                    <button class="theme-option px-3 py-1 rounded-full text-sm bg-black text-white" data-theme="allblack">All Black</button>
+                    <button class="theme-option px-3 py-1 rounded-full text-sm bg-white text-black" data-theme="light">Light</button>
+                    <button class="theme-option px-3 py-1 rounded-full text-sm bg-blue-900 text-white" data-theme="midnight">Midnight Blue</button>
+                    <button class="theme-option px-3 py-1 rounded-full text-sm bg-emerald-700 text-white" data-theme="emerald">Emerald</button>
+                    <button class="theme-option px-3 py-1 rounded-full text-sm bg-rose-500 text-white" data-theme="rose">Rose</button>
+                    <button class="theme-option px-3 py-1 rounded-full text-sm bg-orange-500 text-white" data-theme="sunset">Sunset</button>
+                    <button class="theme-option px-3 py-1 rounded-full text-sm bg-red-600 text-white" data-theme="natal">Natal</button>
+                </div>
+                <div class="mt-4">
+                    <label class="block text-sm text-gray-400 mb-1">Conta Google</label>
+                    <div class="flex items-center gap-2">
+                        <input type="email" placeholder="tu@email.com" class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm">
+                        <button class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm">Vincular</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer con activación de Windows (broma) -->
+        <div class="mt-8 text-center text-xs text-gray-600">
+            Activar Windows · Ve a Configuración para activar Windows.
+        </div>
     </div>
+
     <script>
-        async function loadStats() {
+        // Datos simulados (en un entorno real, vendrían de la API)
+        const apiBase = '/api';
+
+        async function fetchData(endpoint) {
             try {
-                const res = await fetch('/api/server');
-                const data = await res.json();
-                document.getElementById('cpu').innerText = data.cpu + '%';
-                document.getElementById('ram').innerText = data.ram + '%';
-                document.getElementById('disk').innerText = data.disk + '%';
-                const hours = Math.floor(data.uptime / 3600);
-                document.getElementById('uptime').innerText = hours + 'h';
-            } catch (e) {}
+                const res = await fetch(`${apiBase}/${endpoint}`);
+                if (!res.ok) throw new Error();
+                return await res.json();
+            } catch (e) {
+                console.warn(`Error fetching ${endpoint}:`, e);
+                return null;
+            }
         }
-        loadStats();
-        setInterval(loadStats, 5000);
+
+        // Cargar datos y actualizar interfaz
+        async function loadDashboard() {
+            const server = await fetchData('server');
+            const backends = await fetchData('backends') || [];
+            const users = await fetchData('users') || [];
+
+            // Actualizar tarjetas de resumen
+            document.getElementById('active-services').innerText = backends.filter(b => b.status === 'active').length;
+            document.getElementById('active-domains').innerText = backends.length; // o dominios reales
+            document.getElementById('total-affiliates').innerText = users.length;
+            document.getElementById('open-tickets').innerText = '0'; // simulado
+            document.getElementById('notifications').innerText = '3'; // simulado
+
+            // Actualizar progreso de CloudFront (simulado)
+            const cloudfrontProgress = document.getElementById('cloudfront-progress');
+            const cloudfrontStatus = document.getElementById('cloudfront-status');
+            const activeBackends = backends.filter(b => b.status === 'active').length;
+            const totalBackends = backends.length;
+            const percent = totalBackends ? (activeBackends / totalBackends) * 100 : 0;
+            cloudfrontProgress.style.width = percent + '%';
+            cloudfrontStatus.innerText = `${activeBackends}/${totalBackends} dominios`;
+
+            // Online uptime (simulado)
+            const onlineProgress = document.getElementById('online-progress');
+            const onlinePercent = document.getElementById('online-percent');
+            const uptime = server?.uptime ? 98.8 : 99.2; // simulado
+            onlineProgress.style.width = uptime + '%';
+            onlinePercent.innerText = uptime + '% uptime';
+
+            // Gráfico de distribución (doughnut)
+            const ctxDist = document.getElementById('distributionChart').getContext('2d');
+            new Chart(ctxDist, {
+                type: 'doughnut',
+                data: {
+                    labels: ['CloudFront', 'VPS', 'Otros'],
+                    datasets: [{
+                        data: [activeBackends, 2, 1],
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    cutout: '70%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: true }
+                    }
+                }
+            });
+
+            // Gráfico de uptime 24h (simulado)
+            const ctxUptime = document.getElementById('uptimeChart').getContext('2d');
+            const hours = Array.from({length: 24}, (_, i) => `${i}:00`);
+            const uptimeData = hours.map(() => Math.floor(Math.random() * 20 + 80)); // simula 80-100%
+            new Chart(ctxUptime, {
+                type: 'line',
+                data: {
+                    labels: hours,
+                    datasets: [{
+                        label: 'Uptime %',
+                        data: uptimeData,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => ctx.raw + '%' } }
+                    },
+                    scales: {
+                        y: { min: 0, max: 100, grid: { color: '#334155' } },
+                        x: { ticks: { maxRotation: 45, minRotation: 45 } }
+                    }
+                }
+            });
+
+            // Lista de vencimientos (simulado)
+            const expiringList = document.getElementById('expiring-list');
+            expiringList.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="font-medium">CloudFront 30 dias</p>
+                        <p class="text-xs text-gray-500">Backend: app292448 · IP: 128.254.188.235</p>
+                    </div>
+                    <span class="status-badge status-active">19d</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="font-medium">CloudFront 30 dias</p>
+                        <p class="text-xs text-gray-500">Backend: app471073 · IP: 128.254.188.236</p>
+                    </div>
+                    <span class="status-badge status-active">16d</span>
+                </div>
+            `;
+        }
+
+        // Cambiar tema (simulado)
+        document.querySelectorAll('.theme-option').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const theme = this.dataset.theme;
+                // Aquí se podría cambiar variables CSS
+                alert('Tema cambiado a ' + theme + ' (simulado)');
+            });
+        });
+
+        loadDashboard();
     </script>
 </body>
 </html>
