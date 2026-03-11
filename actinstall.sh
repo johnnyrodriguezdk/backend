@@ -1132,3 +1132,182 @@ bm_traffic_viewer() {
             jq -r '.[]|"\$.name) \$.bytes)"' "${BM_TRAFFIC}" 2>/dev/null | while read -r bname bbytes; do
                 echo -e "  ${VERDE}${bname}${SEMCOR} : ${AMARILLO}$(format_bytes ${bbytes:-0})${SEMCOR}"
             done
+        else
+            msg -ama "Sin datos de tráfico aún. Genera tráfico y vuelve."
+        fi
+    else
+        msg -ama "jq no disponible o traffic.json vacío"
+    fi
+    msg -bar2
+    echo -e "${CIAN}TOP 10 IPs (access.log):${SEMCOR}"
+    tail -n 500 /var/log/nginx/access.log 2>/dev/null | awk '{print $1}' | sort | uniq -c | sort -nr | head -10 | while read -r count ip; do
+        echo -e "  ${BLANCO}${ip}${SEMCOR} : ${AMARILLO}${count} requests${SEMCOR}"
+    done
+    msg -bar; read -p "Presiona ENTER..."
+}
+
+bm_logs_viewer() {
+    show_status_panel
+    msg -tit "LOGS DEL SISTEMA (logs.json)"
+    if command -v jq >/dev/null 2>&1 && [ -f "${BM_LOGS}" ] && [ -s "${BM_LOGS}" ]; then
+        local count=$(jq length "${BM_LOGS}" 2>/dev/null || echo 0)
+        if [ "$count" -gt 0 ]; then
+            echo -e "${CIAN}Últimos 20 eventos:${SEMCOR}"
+            msg -bar2
+            jq -r '.[-20:][]|"\$.timestamp) | \$.action) | \$.details)"' "${BM_LOGS}" 2>/dev/null | while IFS='|' read -r ts ac de; do
+                echo -e "  ${CIAN}${ts}${SEMCOR} ${VERDE}${ac}${SEMCOR} ${de}"
+            done
+        else
+            msg -ama "No hay eventos registrados"
+        fi
+    else
+        msg -ama "logs.json vacío o jq no disponible"
+    fi
+    msg -bar2
+    echo -e "${AMARILLO}1)${SEMCOR} Ver todos los logs"
+    echo -e "${AMARILLO}2)${SEMCOR} Limpiar logs"
+    echo -e "${AMARILLO}0)${SEMCOR} Volver"
+    read -p "Opción: " lo
+    case $lo in
+        1) jq '.' "${BM_LOGS}" 2>/dev/null | less ;;
+        2) read -p "Escribe LIMPIAR: " cl
+           [ "$cl" = "LIMPIAR" ] && echo "[]" > "${BM_LOGS}" && msg -verd "Logs limpiados" ;;
+        0) return ;;
+    esac
+    read -p "Presiona ENTER..."
+}
+
+bm_api_dashboard_status() {
+    show_status_panel
+    msg -tit "ESTADO API / PANEL WEB"
+    msg -bar2
+
+    echo -e "${CIAN}API FLASK:${SEMCOR}"
+    if systemctl is-active --quiet backend-manager-api 2>/dev/null; then
+        echo -e "  Servicio:  ${VERDE}ACTIVO ✅${SEMCOR}"
+    else
+        echo -e "  Servicio:  ${ROJO}INACTIVO ❌${SEMCOR}"
+    fi
+    local api_code
+    api_code="$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:5000/api/status 2>/dev/null || echo "000")"
+    if [ "$api_code" = "200" ]; then
+        echo -e "  Respuesta: ${VERDE}HTTP 200 OK${SEMCOR}"
+        echo -e "  Datos:     $(curl -s --max-time 2 http://127.0.0.1:5000/api/status 2>/dev/null)"
+    else
+        echo -e "  Respuesta: ${ROJO}HTTP ${api_code}${SEMCOR}"
+    fi
+    echo -e "  URL:       ${CIAN}http://127.0.0.1:5000/api/status${SEMCOR}"
+
+    msg -bar2
+    echo -e "${CIAN}PANEL WEB (Dashboard):${SEMCOR}"
+    if [ -f "/var/www/backend-manager/index.html" ]; then
+        echo -e "  Archivo:   ${VERDE}EXISTE ✅${SEMCOR}"
+    else
+        echo -e "  Archivo:   ${ROJO}NO EXISTE ❌${SEMCOR}"
+    fi
+    local dash_code
+    dash_code="$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:8081/ 2>/dev/null || echo "000")"
+    if [ "$dash_code" = "200" ]; then
+        echo -e "  Nginx:     ${VERDE}RESPONDIENDO ✅${SEMCOR}"
+    else
+        echo -e "  Nginx:     ${ROJO}NO RESPONDE (${dash_code})${SEMCOR}"
+    fi
+    local server_ip=$(curl -s --max-time 3 ifconfig.me 2>/dev/null || echo "TU_IP")
+    echo -e "  URL:       ${CIAN}http://${server_ip}:8081${SEMCOR}"
+
+    msg -bar2
+    echo -e "${CIAN}ENDPOINTS DISPONIBLES:${SEMCOR}"
+    echo -e "  GET /api/status    → Estado del sistema"
+    echo -e "  GET /api/backends  → Lista de backends"
+    echo -e "  GET /api/users     → Lista de usuarios"
+    echo -e "  GET /api/traffic   → Tráfico por backend"
+    echo -e "  GET /api/server    → CPU/RAM/Disco/Red"
+
+    msg -bar2
+    echo -e "${AMARILLO}1)${SEMCOR} Reiniciar API Flask"
+    echo -e "${AMARILLO}2)${SEMCOR} Ver logs API"
+    echo -e "${AMARILLO}3)${SEMCOR} Abrir puerto 8081 en UFW"
+    echo -e "${AMARILLO}0)${SEMCOR} Volver"
+    read -p "Opción: " ao
+    case $ao in
+        1) systemctl restart backend-manager-api; msg -verd "API reiniciada"; bm_log_event "API_RESTART" "API Flask reiniciada" ;;
+        2) journalctl -u backend-manager-api --no-pager -n 30 ;;
+        3) ufw allow 8081/tcp; ufw reload; msg -verd "Puerto 8081 abierto"; bm_log_event "UFW" "Puerto 8081 abierto" ;;
+        0) return ;;
+    esac
+    read -p "Presiona ENTER..."
+}
+
+bm_extended_backup() {
+    show_status_panel
+    msg -tit "BACKUP EXTENDIDO (JSON + NGINX + CONFIGS)"
+    local dest="/root/backend-backups"
+    mkdir -p "$dest"
+    local ts=$(date +%Y%m%d_%H%M%S)
+    local bfile="${dest}/full_backup_${ts}.tar.gz"
+    msg -info "Creando backup completo..."
+    tar -czf "$bfile" \
+        /etc/backend-manager/data \
+        /etc/nginx/sites-available \
+        /etc/nginx/sites-enabled \
+        /etc/nginx/superc4mpeon_users.txt \
+        /root/superc4mpeon_backups \
+        2>/dev/null || true
+    if [ -f "$bfile" ]; then
+        local size=$(du -h "$bfile" | awk '{print $1}')
+        msg -verd "✅ Backup creado: full_backup_${ts}.tar.gz (${size})"
+        bm_log_event "FULL_BACKUP" "Backup completo: ${bfile} (${size})"
+    else
+        msg -verm "Error al crear backup"
+    fi
+    msg -bar2
+    echo -e "${CIAN}Backups extendidos disponibles:${SEMCOR}"
+    ls -lh "$dest"/full_backup_*.tar.gz 2>/dev/null | awk '{print "  "$NF" ("$5")"}'
+    msg -bar; read -p "Presiona ENTER..."
+}
+
+# ============ MENÚ PRINCIPAL — 20 OPCIONES + 7 EXTENDED ============
+main_menu() {
+    while true; do
+        show_status_panel
+
+        echo -e "${AMARILLO}═══════════ MENÚ PRINCIPAL ═══════════${SEMCOR}"
+        echo -e " ${VERDE}[01]${SEMCOR} ${BLANCO}INSTALAR NGINX (80)${SEMCOR}"
+        echo -e " ${VERDE}[02]${SEMCOR} ${BLANCO}INSTALAR PROXY PYTHON (8080)${SEMCOR}"
+        echo -e " ${VERDE}[03]${SEMCOR} ${BLANCO}GESTIONAR BACKENDS${SEMCOR}"
+        echo -e " ${VERDE}[04]${SEMCOR} ${BLANCO}VER ESTADO DEL SISTEMA${SEMCOR}"
+        echo -e " ${VERDE}[05]${SEMCOR} ${BLANCO}INSTRUCCIONES Y PAYLOADS${SEMCOR}"
+        echo -e " ${VERDE}[06]${SEMCOR} ${BLANCO}EDITAR CONFIGURACIÓN MANUAL${SEMCOR}"
+        echo -e " ${VERDE}[07]${SEMCOR} ${BLANCO}REINICIAR SERVICIOS${SEMCOR}"
+        echo -e " ${VERDE}[08]${SEMCOR} ${BLANCO}GESTIÓN DE BACKUPS${SEMCOR}"
+        echo -e " ${VERDE}[09]${SEMCOR} ${BLANCO}LIMPIAR BACKENDS EXPIRADOS${SEMCOR}"
+        echo -e " ${VERDE}[10]${SEMCOR} ${BLANCO}HEALTHCHECK (HTTP/LATENCIA)${SEMCOR}"
+        echo -e " ${VERDE}[11]${SEMCOR} ${BLANCO}VALIDAR CONEXIÓN (HEADER)${SEMCOR}"
+        echo -e " ${VERDE}[12]${SEMCOR} ${BLANCO}EDITAR TIMEOUTS${SEMCOR}"
+        echo -e " ${VERDE}[13]${SEMCOR} ${BLANCO}BALANCEO DE CARGA${SEMCOR}"
+        echo -e " ${VERDE}[14]${SEMCOR} ${BLANCO}LIMITAR ANCHO DE BANDA${SEMCOR}"
+        echo -e " ${VERDE}[15]${SEMCOR} ${BLANCO}TRÁFICO POR IP (STATS)${SEMCOR}"
+        echo -e " ${VERDE}[16]${SEMCOR} ${BLANCO}FIREWALL UFW: ABRIR PUERTO${SEMCOR}"
+        echo -e " ${VERDE}[17]${SEMCOR} ${BLANCO}SPEEDTEST${SEMCOR}"
+        echo -e " ${VERDE}[18]${SEMCOR} ${BLANCO}MANTENIMIENTO PROGRAMADO${SEMCOR}"
+        echo -e " ${VERDE}[19]${SEMCOR} ${BLANCO}DESINSTALAR TODO${SEMCOR}"
+        echo -e "${TURQUESA}═══════════ EXTENDED DEVOPS ═══════════${SEMCOR}"
+        echo -e " ${CIAN}[21]${SEMCOR} ${BLANCO}📊 MONITOREO SERVIDOR (DETALLADO)${SEMCOR}"
+        echo -e " ${CIAN}[22]${SEMCOR} ${BLANCO}📡 MONITOREO BACKENDS (JSON)${SEMCOR}"
+        echo -e " ${CIAN}[23]${SEMCOR} ${BLANCO}📈 VER TRÁFICO POR BACKEND${SEMCOR}"
+        echo -e " ${CIAN}[24]${SEMCOR} ${BLANCO}📋 VER LOGS DEL SISTEMA${SEMCOR}"
+        echo -e " ${CIAN}[25]${SEMCOR} ${BLANCO}💾 BACKUP EXTENDIDO (JSON+NGINX)${SEMCOR}"
+        echo -e " ${CIAN}[26]${SEMCOR} ${BLANCO}🧩 ESTADO API / PANEL WEB${SEMCOR}"
+        echo -e "${AMARILLO}═══════════════════════════════════════${SEMCOR}"
+        echo -e " ${ROJO}[0]${SEMCOR}  ${BLANCO}SALIR${SEMCOR}"
+        echo -e "${CIAN}════════════════════════════════════════════════════════${SEMCOR}"
+
+        read -p "🔥 SELECCIONA OPCIÓN: " option
+
+        case $option in
+            1)  install_nginx_super ;;
+            2)  install_python_proxy ;;
+            3)  manage_backends ;;
+            4)  show_status ;;
+            5)  show_epic_instructions ;;
+            6)  nano "$BACKEND_CONF
